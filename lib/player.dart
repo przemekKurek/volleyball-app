@@ -1,51 +1,38 @@
-import 'dart:convert';
-
 class Player {
+  String? id;
   String name;
-  int attack;
-  int defense;
-  int setting;
-  int service;
-  int height;
+  int attack, defense, setting, service, height;
+  bool isSelected;
 
   Player({
+    this.id,
     required this.name,
     required this.attack,
     required this.defense,
     required this.setting,
     required this.service,
     required this.height,
+    this.isSelected = false,
   });
 
-  Map<String, dynamic> toJson() {
-    return {
-      'name': name,
-      'attack': attack,
-      'defense': defense,
-      'setting': setting,
-      'service': service,
-      'height': height,
-    };
-  }
+  Map<String, dynamic> toMap() => {
+        'name': name,
+        'attack': attack,
+        'defense': defense,
+        'setting': setting,
+        'service': service,
+        'height': height,
+        'isSelected': isSelected,
+      };
 
-  factory Player.fromJson(Map<String, dynamic> json) {
-    return Player(
-      name: json['name'],
-      attack: json['attack'],
-      defense: json['defense'],
-      setting: json['setting'],
-      service: json['service'],
-      height: json['height'],
-    );
-  }
-
-  // Pomocnicze funkcje do listy
-  static String encode(List<Player> players) => json.encode(
-        players.map<Map<String, dynamic>>((p) => p.toJson()).toList(),
+  factory Player.fromMap(Map<String, dynamic> map, String id) => Player(
+        id: id,
+        name: map['name'],
+        attack: map['attack'],
+        defense: map['defense'],
+        setting: map['setting'],
+        service: map['service'],
+        height: map['height'],
+        isSelected: map['isSelected'] ?? false,
       );
-
-  static List<Player> decode(String players) =>
-      (json.decode(players) as List<dynamic>)
-          .map<Player>((item) => Player.fromJson(item))
-          .toList();
 }

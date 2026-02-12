@@ -1,102 +1,192 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'player.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:convert';
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart'; // this will be generated
 
-void main() => runApp(MaterialApp(
-      title: 'Volleyball Players',
-      theme: ThemeData(primarySwatch: Colors.blue),
-      home: MyApp(),
-    ));
 
-// MODEL DANYCH ZAWODNIKA
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+  runApp(MyApp());
+}
 
-// GŁÓWNA APLIKACJA
+
 class MyApp extends StatefulWidget {
   @override
   _MyAppState createState() => _MyAppState();
 }
 
 class _MyAppState extends State<MyApp> {
-  // lista zawodników
-  List<Player> players = [];
+  final playersCollection = FirebaseFirestore.instance.collection('players');
 
-  final _nameController = TextEditingController();
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Volleyball Players'),
+        actions: [
+          IconButton(
+              icon: Icon(Icons.shuffle),
+              onPressed: () async {
+                final snapshot = await playersCollection.get();
+                final selectedPlayers = snapshot.docs
+                    .map((doc) => Player.fromMap(doc.data(), doc.id))
+                    .where((p) => p.isSelected)
+                    .toList();
 
-  // dodawanie zawodnika
-  void addPlayer(String name) {
-    if (name.isEmpty) return;
-    setState(() {
-      players.add(Player(
-          name: name,
-          attack: 5,
-          defense: 5,
-          setting: 5,
-          service: 5,
-          height: 180));
-    });
-    _nameController.clear();
-    savePlayers();
+                if (selectedPlayers.length < 10 || selectedPlayers.length > 18) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                      content: Text(
+                          'Select between 10 and 18 players to generate teams')));
+                  return;
+                }
+
+                _generateTeams(selectedPlayers);
+              }),
+          IconButton(
+            icon: Icon(Icons.add),
+            onPressed: () => _showAddPlayerDialog(),
+          )
+        ],
+      ),
+      body: StreamBuilder<QuerySnapshot>(
+        stream: playersCollection.snapshots(),
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) return Center(child: CircularProgressIndicator());
+          final players = snapshot.data!.docs
+              .map((doc) => Player.fromMap(doc.data() as Map<String, dynamic>, doc.id))
+              .toList();
+          return Padding(
+            padding: const EdgeInsets.all(16),
+            child: GridView.builder(
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 3, crossAxisSpacing: 10, mainAxisSpacing: 10, childAspectRatio: 3),
+              itemCount: players.length,
+              itemBuilder: (context, index) {
+                final player = players[index];
+                return GestureDetector(
+                  onTap: () {
+                    playersCollection.doc(player.id).update({'isSelected': !player.isSelected});
+                  },
+                  child: Container(
+                    padding: EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: player.isSelected ? Colors.green[200] : Colors.blue[100],
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(player.name),
+                        Row(
+                          children: [
+                            IconButton(
+                                icon: Icon(Icons.edit, color: Colors.green),
+                                onPressed: () => _showEditPlayerDialog(player)),
+                            IconButton(
+                                icon: Icon(Icons.delete, color: Colors.red),
+                                onPressed: () => playersCollection.doc(player.id).delete()),
+                          ],
+                        )
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          );
+        },
+      ),
+    );
   }
 
-  // usuwanie zawodnika
-  void removePlayer(Player player) {
-    setState(() {
-      players.remove(player);
-    });
-    savePlayers();
-  }
-
-  // edycja zawodnika
-  void editPlayer(Player player) {
-    final _attackController = TextEditingController(text: player.attack.toString());
-    final _defenseController = TextEditingController(text: player.defense.toString());
-    final _settingController = TextEditingController(text: player.setting.toString());
-    final _serviceController = TextEditingController(text: player.service.toString());
-    final _heightController = TextEditingController(text: player.height.toString());
+  void _showAddPlayerDialog() {
+    final nameController = TextEditingController();
+    final attackController = TextEditingController(text: "5");
+    final defenseController = TextEditingController(text: "5");
+    final settingController = TextEditingController(text: "5");
+    final serviceController = TextEditingController(text: "5");
+    final heightController = TextEditingController(text: "180");
 
     showDialog(
         context: context,
-        builder: (_) {
-          return AlertDialog(
-            title: Text('Edit ${player.name}'),
-            content: SingleChildScrollView(
-              child: Column(
+        builder: (_) => AlertDialog(
+              title: Text('Add Player'),
+              content: SingleChildScrollView(
+                  child: Column(
                 children: [
-                  buildStatField('Attack', _attackController),
-                  buildStatField('Defense', _defenseController),
-                  buildStatField('Setting', _settingController),
-                  buildStatField('Service', _serviceController),
-                  buildStatField('Height', _heightController),
+                  TextField(controller: nameController, decoration: InputDecoration(labelText: 'Name')),
+                  TextField(controller: attackController, decoration: InputDecoration(labelText: 'Attack'), keyboardType: TextInputType.number),
+                  TextField(controller: defenseController, decoration: InputDecoration(labelText: 'Defense'), keyboardType: TextInputType.number),
+                  TextField(controller: settingController, decoration: InputDecoration(labelText: 'Setting'), keyboardType: TextInputType.number),
+                  TextField(controller: serviceController, decoration: InputDecoration(labelText: 'Service'), keyboardType: TextInputType.number),
+                  TextField(controller: heightController, decoration: InputDecoration(labelText: 'Height'), keyboardType: TextInputType.number),
                 ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                  onPressed: () {
-                    setState(() {
-                      player.attack = int.tryParse(_attackController.text) ?? player.attack;
-                      player.defense = int.tryParse(_defenseController.text) ?? player.defense;
-                      player.setting = int.tryParse(_settingController.text) ?? player.setting;
-                      player.service = int.tryParse(_serviceController.text) ?? player.service;
-                      player.height = int.tryParse(_heightController.text) ?? player.height;
-                    });
-                    Navigator.of(context).pop();
-                    savePlayers();
-                  },
-                  child: Text('Save')),
-              TextButton(
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                  },
-                  child: Text('Cancel'))
-            ],
-          );
-        });
+              )),
+              actions: [
+                TextButton(
+                    onPressed: () {
+                      final newPlayer = Player(
+                        name: nameController.text,
+                        attack: int.tryParse(attackController.text) ?? 5,
+                        defense: int.tryParse(defenseController.text) ?? 5,
+                        setting: int.tryParse(settingController.text) ?? 5,
+                        service: int.tryParse(serviceController.text) ?? 5,
+                        height: int.tryParse(heightController.text) ?? 180,
+                        isSelected: false,
+                      );
+                      playersCollection.add(newPlayer.toMap());
+                      Navigator.pop(context);
+                    },
+                    child: Text('Add')),
+                TextButton(onPressed: () => Navigator.pop(context), child: Text('Cancel')),
+              ],
+            ));
   }
 
-  // pomocnicza funkcja do tworzenia TextField dla statystyk
-  Widget buildStatField(String label, TextEditingController controller) {
+  void _showEditPlayerDialog(Player player) {
+    final attackController = TextEditingController(text: player.attack.toString());
+    final defenseController = TextEditingController(text: player.defense.toString());
+    final settingController = TextEditingController(text: player.setting.toString());
+    final serviceController = TextEditingController(text: player.service.toString());
+    final heightController = TextEditingController(text: player.height.toString());
+
+    showDialog(
+        context: context,
+        builder: (_) => AlertDialog(
+              title: Text('Edit ${player.name}'),
+              content: SingleChildScrollView(
+                  child: Column(
+                children: [
+                  _buildStatField('Attack', attackController),
+                  _buildStatField('Defense', defenseController),
+                  _buildStatField('Setting', settingController),
+                  _buildStatField('Service', serviceController),
+                  _buildStatField('Height', heightController),
+                ],
+              )),
+              actions: [
+                TextButton(
+                    onPressed: () {
+                      playersCollection.doc(player.id).update({
+                        'attack': int.tryParse(attackController.text) ?? player.attack,
+                        'defense': int.tryParse(defenseController.text) ?? player.defense,
+                        'setting': int.tryParse(settingController.text) ?? player.setting,
+                        'service': int.tryParse(serviceController.text) ?? player.service,
+                        'height': int.tryParse(heightController.text) ?? player.height,
+                      });
+                      Navigator.pop(context);
+                    },
+                    child: Text('Save')),
+                TextButton(onPressed: () => Navigator.pop(context), child: Text('Cancel')),
+              ],
+            ));
+  }
+
+  Widget _buildStatField(String label, TextEditingController controller) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: TextField(
@@ -107,104 +197,54 @@ class _MyAppState extends State<MyApp> {
     );
   }
 
-@override
-Widget build(BuildContext context) {
-  return Scaffold(
-    appBar: AppBar(title: Text('Volleyball Players')),
-    body: Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        children: [
-          // formularz dodawania zawodnika
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _nameController,
-                  decoration: InputDecoration(labelText: 'New player name'),
-                ),
-              ),
-              SizedBox(width: 10),
-              ElevatedButton(
-                  onPressed: () => addPlayer(_nameController.text),
-                  child: Text('Add')),
-            ],
-          ),
-          SizedBox(height: 20),
-          // lista zawodników w 3 kolumnach
-          Expanded(
-            child: GridView.builder(
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 3, // 3 kolumny
-                crossAxisSpacing: 10,
-                mainAxisSpacing: 10,
-                childAspectRatio: 3,
-              ),
-              itemCount: players.length,
-              itemBuilder: (context, index) {
-                final player = players[index];
-                return Container(
-                  padding: EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.blue[100],
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(player.name),
-                      Row(
-                        children: [
-                          // Ikona ołówka → edycja
-                          IconButton(
-                            icon: Icon(Icons.edit, color: Colors.green),
-                            onPressed: () => editPlayer(player),
-                            tooltip: 'Edit player',
-                          ),
-                          // Ikona kosza → usuwanie
-                          IconButton(
-                            icon: Icon(Icons.delete, color: Colors.red),
-                            onPressed: () => removePlayer(player),
-                            tooltip: 'Delete player',
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-    ),
-  );
-}
+  void _generateTeams(List<Player> selected) {
+    selected.shuffle();
+    List<List<Player>> teams = [];
 
-@override
-void initState() {
-  super.initState();
-  loadPlayers();
-}
+    switch (selected.length) {
+      case 10:
+        teams = [selected.sublist(0, 5), selected.sublist(5)];
+        break;
+      case 11:
+        teams = [selected.sublist(0, 6), selected.sublist(6)];
+        break;
+      case 12:
+        teams = [selected.sublist(0, 6), selected.sublist(6)];
+        break;
+      case 13:
+        teams = [selected.sublist(0, 7), selected.sublist(7)];
+        break;
+      case 14:
+        teams = [selected.sublist(0, 7), selected.sublist(7)];
+        break;
+      case 15:
+        teams = [selected.sublist(0, 5), selected.sublist(5, 10), selected.sublist(10)];
+        break;
+      case 16:
+        teams = [selected.sublist(0, 6), selected.sublist(6, 11), selected.sublist(11)];
+        break;
+      case 17:
+        teams = [selected.sublist(0, 6), selected.sublist(6, 12), selected.sublist(12)];
+        break;
+      case 18:
+        teams = [selected.sublist(0, 6), selected.sublist(6, 12), selected.sublist(12)];
+        break;
+    }
 
-void loadPlayers() async {
-  final prefs = await SharedPreferences.getInstance();
-  final String? playersString = prefs.getString('players');
-  if (playersString != null) {
-    setState(() {
-      players = Player.decode(playersString);
-    });
+    showDialog(
+        context: context,
+        builder: (_) => AlertDialog(
+              title: Text('Teams'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (int i = 0; i < teams.length; i++)
+                    Text('Team ${i + 1}: ${teams[i].map((p) => p.name).join(', ')}')
+                ],
+              ),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(context), child: Text('OK')),
+              ],
+            ));
   }
-}
-
-void savePlayers() async {
-  final prefs = await SharedPreferences.getInstance();
-  final String encodedData = Player.encode(players);
-  await prefs.setString('players', encodedData);
-}
-
-
-
-
-
 }
