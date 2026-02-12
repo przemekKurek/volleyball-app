@@ -2,7 +2,7 @@ name: Deploy Flutter Web to Pages
 
 on:
   push:
-    branches: ["main"]
+    branches: ["gh-pages"]
   workflow_dispatch:
 
 permissions:
@@ -34,7 +34,7 @@ jobs:
         run: flutter pub get
 
       - name: Build web
-        run: flutter build web --release --base-href "/volleyball-team-app/"
+        run: flutter build web --release --base-href "/volleyball-app/"
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
