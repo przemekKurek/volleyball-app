@@ -17,12 +17,22 @@ void main() async {
 }
 
 
-class MyApp extends StatefulWidget {
+class MyApp extends StatelessWidget {
   @override
-  _MyAppState createState() => _MyAppState();
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Volleyball Players',
+      home: VolleyballHomePage(),
+    );
+  }
 }
 
-class _MyAppState extends State<MyApp> {
+class VolleyballHomePage extends StatefulWidget {
+  @override
+  _VolleyballHomePageState createState() => _VolleyballHomePageState();
+}
+
+class _VolleyballHomePageState extends State<VolleyballHomePage> {
   final playersCollection = FirebaseFirestore.instance.collection('players');
 
   @override
@@ -49,11 +59,12 @@ class _MyAppState extends State<MyApp> {
 
                 _generateTeams(selectedPlayers);
               }),
-          IconButton(
-            icon: Icon(Icons.add),
-            onPressed: () => _showAddPlayerDialog(),
-          )
         ],
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endTop,
+      floatingActionButton: FloatingActionButton.small(
+        onPressed: _showAddPlayerDialog,
+        child: Icon(Icons.add),
       ),
       body: StreamBuilder<QuerySnapshot>(
         stream: playersCollection.snapshots(),
@@ -107,47 +118,68 @@ class _MyAppState extends State<MyApp> {
   }
 
   void _showAddPlayerDialog() {
+    final formKey = GlobalKey<FormState>();
     final nameController = TextEditingController();
-    final attackController = TextEditingController(text: "5");
-    final defenseController = TextEditingController(text: "5");
-    final settingController = TextEditingController(text: "5");
-    final serviceController = TextEditingController(text: "5");
-    final heightController = TextEditingController(text: "180");
+    final attackController = TextEditingController(text: '5');
+    final defenseController = TextEditingController(text: '5');
+    final settingController = TextEditingController(text: '5');
+    final serviceController = TextEditingController(text: '5');
+    final heightController = TextEditingController(text: '180');
 
     showDialog(
-        context: context,
-        builder: (_) => AlertDialog(
-              title: Text('Add Player'),
-              content: SingleChildScrollView(
-                  child: Column(
-                children: [
-                  TextField(controller: nameController, decoration: InputDecoration(labelText: 'Name')),
-                  TextField(controller: attackController, decoration: InputDecoration(labelText: 'Attack'), keyboardType: TextInputType.number),
-                  TextField(controller: defenseController, decoration: InputDecoration(labelText: 'Defense'), keyboardType: TextInputType.number),
-                  TextField(controller: settingController, decoration: InputDecoration(labelText: 'Setting'), keyboardType: TextInputType.number),
-                  TextField(controller: serviceController, decoration: InputDecoration(labelText: 'Service'), keyboardType: TextInputType.number),
-                  TextField(controller: heightController, decoration: InputDecoration(labelText: 'Height'), keyboardType: TextInputType.number),
-                ],
-              )),
-              actions: [
-                TextButton(
-                    onPressed: () {
-                      final newPlayer = Player(
-                        name: nameController.text,
-                        attack: int.tryParse(attackController.text) ?? 5,
-                        defense: int.tryParse(defenseController.text) ?? 5,
-                        setting: int.tryParse(settingController.text) ?? 5,
-                        service: int.tryParse(serviceController.text) ?? 5,
-                        height: int.tryParse(heightController.text) ?? 180,
-                        isSelected: false,
-                      );
-                      playersCollection.add(newPlayer.toMap());
-                      Navigator.pop(context);
-                    },
-                    child: Text('Add')),
-                TextButton(onPressed: () => Navigator.pop(context), child: Text('Cancel')),
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text('Add Player'),
+        content: SingleChildScrollView(
+          child: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  controller: nameController,
+                  decoration: InputDecoration(labelText: 'Name'),
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Name is required';
+                    }
+                    return null;
+                  },
+                ),
+                _buildNumberFormField('Attack', attackController),
+                _buildNumberFormField('Defense', defenseController),
+                _buildNumberFormField('Setting', settingController),
+                _buildNumberFormField('Service', serviceController),
+                _buildNumberFormField('Height', heightController),
               ],
-            ));
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              if (!formKey.currentState!.validate()) {
+                return;
+              }
+
+              final newPlayer = Player(
+                name: nameController.text.trim(),
+                attack: int.parse(attackController.text),
+                defense: int.parse(defenseController.text),
+                setting: int.parse(settingController.text),
+                service: int.parse(serviceController.text),
+                height: int.parse(heightController.text),
+                isSelected: false,
+              );
+              playersCollection.add(newPlayer.toMap());
+              Navigator.pop(context);
+            },
+            child: Text('Add'),
+          ),
+          TextButton(onPressed: () => Navigator.pop(context), child: Text('Cancel')),
+        ],
+      ),
+    );
   }
 
   void _showEditPlayerDialog(Player player) {
@@ -196,6 +228,24 @@ class _MyAppState extends State<MyApp> {
         controller: controller,
         keyboardType: TextInputType.number,
         decoration: InputDecoration(labelText: label),
+      ),
+    );
+  }
+
+  Widget _buildNumberFormField(String label, TextEditingController controller) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: TextFormField(
+        controller: controller,
+        keyboardType: TextInputType.number,
+        decoration: InputDecoration(labelText: label),
+        validator: (value) {
+          final parsed = int.tryParse(value ?? '');
+          if (parsed == null) {
+            return 'Enter a number';
+          }
+          return null;
+        },
       ),
     );
   }
